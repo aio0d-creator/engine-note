@@ -1,0 +1,761 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="apple-mobile-web-app-capable" content="yes"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;padding:0}img{max-width:100%}[hidden]{display:none!important}</style></head><body><title>Engine Note</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Saira:wght@400;500;600&family=Saira+Extra+Condensed:wght@600;800&display=swap" rel="stylesheet">
+<style>
+/* Layout: in-car cockpit — gauge + controls on the left, a scrolling garage of engines on the right; stacks on phones. Single dark look for night driving. */
+:root{
+  --bg:#08180f; --panel:#0f2619; --panel-2:#153222; --line:#24493a;
+  --fg:#f1ead2; --muted:#9db3a3; --accent:#e3cf93; --red:#e0533c; --ok:#8fd4a1; /* racing green & cream */
+  --display:"Saira Extra Condensed","Arial Narrow",system-ui,sans-serif;
+  --body:"Saira",system-ui,-apple-system,"Segoe UI",sans-serif;
+  color-scheme:dark;
+}
+html,body{background:var(--bg);color:var(--fg)}
+body{font-family:var(--body);font-size:15px;line-height:1.45;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:16px 28px}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.app{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+
+.top{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px}
+.brand{display:flex;align-items:center;gap:12px}
+.mark{width:34px;height:34px;border-radius:50%;border:3px solid var(--accent);border-right-color:var(--red);transform:rotate(-30deg);flex:none}
+h1{font-family:var(--display);font-weight:800;font-size:30px;letter-spacing:.02em;margin:0;line-height:1;text-transform:uppercase}
+.brand p{margin:2px 0 0;color:var(--muted);font-size:13px}
+.controls{display:flex;gap:8px;align-items:center}
+.seg{display:flex;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:3px}
+.seg button{border:0;background:none;padding:6px 14px;border-radius:999px;font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--panel-2);color:var(--fg);box-shadow:inset 0 0 0 1px var(--line)}
+.chip{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:7px 14px;font-size:13px;font-weight:600;letter-spacing:.06em}
+
+.cockpit{display:grid;grid-template-columns:minmax(0,430px) minmax(0,1fr);gap:18px;align-items:start}
+@media (max-width:860px){.cockpit{grid-template-columns:minmax(0,1fr)}}
+
+.dash{background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:18px;display:flex;flex-direction:column;gap:14px;position:sticky;top:12px}
+@media (max-width:860px){.dash{position:static}}
+.gauge-wrap{width:100%;max-width:400px;margin:0 auto;aspect-ratio:1/1}
+#tach{width:100%;height:100%;display:block}
+.carline{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:4px 10px;border-top:1px solid var(--line);padding-top:12px}
+#curName{font-family:var(--display);font-weight:800;font-size:24px;text-transform:uppercase;letter-spacing:.02em}
+#curEng{color:var(--muted);font-size:13px;text-align:right}
+.start{border:0;border-radius:14px;padding:14px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;background:var(--accent);color:#0b2416;font-size:15px}
+.start.on{background:var(--red);color:#fff}
+.rec{display:flex;flex-direction:column;gap:8px;background:var(--panel-2);border:1px solid var(--line);border-radius:14px;padding:10px 12px}
+.rec-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+.rec-label{font-weight:600;letter-spacing:.08em;text-transform:uppercase;font-size:11.5px;color:var(--fg)}
+#recState{min-width:0;overflow-wrap:anywhere}
+.filebtn{cursor:pointer}
+#recRpm{width:84px;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:4px 8px;font:inherit;font-variant-numeric:tabular-nums}
+.car .tag{font-style:normal;color:var(--accent)}
+.status{font-size:13px;color:var(--muted);min-height:1.45em;display:flex;align-items:center;gap:8px}
+.status::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--muted);flex:none}
+.status.ok::before{background:var(--ok)}
+.status.warn::before{background:var(--accent)}
+.gauge-wrap{position:relative}
+.revbtn{position:absolute;left:0;top:0;transform:translate(-8%,-8%);padding:8px 12px!important;font-size:16px!important;border:1px solid var(--line);background:var(--panel-2);color:var(--fg);border-radius:12px;padding:12px 16px;font-family:var(--display);font-weight:800;font-size:20px;letter-spacing:.08em;user-select:none;-webkit-user-select:none;touch-action:none;-webkit-touch-callout:none}
+.revbtn.down{background:var(--red);border-color:var(--red);color:#fff}
+.throttle{display:flex;align-items:center;gap:12px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.tbar{flex:1;height:6px;border-radius:3px;background:var(--panel-2);overflow:hidden}
+.tbar i{display:block;height:100%;width:0;background:var(--red);border-radius:3px}
+.pedals{display:flex;gap:14px;align-items:flex-end;justify-content:center}
+.shiftrow{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.autosw b{font-weight:700;margin-left:4px;color:var(--ok)}
+.autosw[aria-checked="false"] b{color:var(--muted)}
+.paddles{display:flex;gap:8px}
+.paddle{width:56px;height:44px;border-radius:12px;border:1px solid var(--line);background:var(--panel-2);font-family:var(--display);font-weight:800;font-size:24px;line-height:1;user-select:none;-webkit-user-select:none;touch-action:manipulation}
+.paddle:active{background:var(--accent);color:#1b1206;border-color:var(--accent)}
+.pedal{position:relative;display:flex;flex-direction:column;align-items:center;gap:6px;border:0;background:none;padding:0;user-select:none;-webkit-user-select:none;touch-action:none;-webkit-touch-callout:none}
+.pedal small{font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.pedal .grip{display:block;border-radius:12px;border:1px solid #9aa3ad;
+  background:repeating-linear-gradient(90deg,#d9dee4 0 9px,#3b434d 9px 13px);box-shadow:inset 0 2px 0 #ffffff88,0 6px 14px #0008;transition:transform .08s}
+.pedal.brake .grip{width:150px;height:96px;background:repeating-linear-gradient(90deg,#d9dee4 0 11px,#3b434d 11px 15px)}
+.pedal.gas .grip{width:96px;height:132px}
+.pedal.down .grip{transform:scale(.95) translateY(3px)}
+.pedal.gas.down .grip{background:repeating-linear-gradient(90deg,#f0a090 0 9px,#7a2a20 9px 13px);border-color:var(--red)}
+.pedal.brake.down .grip{background:repeating-linear-gradient(90deg,#b8bfc7 0 11px,#2a3038 11px 15px)}
+.pedal.down small{color:var(--red)}
+@media (max-width:380px){.pedal.brake .grip{width:120px}}
+.vol{display:flex;align-items:center;gap:12px;font-size:13px;color:var(--muted)}
+.vol input{flex:1;accent-color:var(--accent)}
+.hint{font-size:12px;color:var(--muted);margin:0}
+
+.garage{display:flex;flex-direction:column;gap:12px;min-width:0}
+.garage-head{display:flex;align-items:baseline;justify-content:space-between}
+h2{font-family:var(--display);font-weight:800;font-size:22px;text-transform:uppercase;letter-spacing:.04em;margin:0}
+#count{color:var(--muted);font-size:13px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+.car{display:flex;flex-direction:column;gap:4px;text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px 12px 14px;min-width:0}
+.car:hover{border-color:#3a4552}
+.car[aria-pressed="true"]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.car svg{width:100%;height:auto;display:block;margin-bottom:4px}
+.car b{font-family:var(--display);font-weight:800;font-size:19px;text-transform:uppercase;letter-spacing:.02em;line-height:1.1}
+.car span{font-size:12.5px;color:var(--muted)}
+.car .spec{display:flex;gap:10px;font-variant-numeric:tabular-nums;color:var(--fg);font-size:12px;opacity:.85}
+.note{color:var(--muted);font-size:12.5px;border-top:1px solid var(--line);padding-top:14px;max-width:75ch}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="app">
+  <header class="top">
+    <div class="brand"><span class="mark" aria-hidden="true"></span>
+      <div><h1>Engine Note</h1><p>Supercar sound for your electric car</p></div></div>
+    <div class="controls">
+      <div class="seg" role="group" aria-label="Speed source">
+        <button id="srcGps" aria-pressed="true">GPS drive</button>
+        <button id="srcDemo" aria-pressed="false">Test drive</button>
+      </div>
+      <button id="unitBtn" class="chip" aria-label="Change speed unit">km/h</button>
+    </div>
+  </header>
+
+  <main class="cockpit">
+    <section class="dash" aria-label="Gauge and controls">
+      <div class="gauge-wrap"><canvas id="tach" aria-label="Tachometer and speed"></canvas>
+        <button id="rev" class="revbtn" aria-label="Hold to rev">REV</button></div>
+      <div class="throttle"><span>Throttle</span><div class="tbar"><i id="tfill"></i></div></div>
+      <div class="pedals" id="pedals" hidden>
+        <button id="brake" class="pedal brake" aria-label="Brake"><small>Brake</small><span class="grip"></span></button>
+        <button id="gas" class="pedal gas" aria-label="Gas"><small>Gas</small><span class="grip"></span></button>
+      </div>
+      <div class="carline"><span id="curName"></span><span id="curEng"></span></div>
+      <div class="rec">
+        <div class="rec-row"><span class="rec-label">Sound</span><span id="recState">Generated</span></div>
+        <div class="rec-row">
+          <label class="chip filebtn" for="recFile" id="recLoad">Load real recording</label>
+          <input type="file" id="recFile" accept="audio/*" hidden>
+          <button id="recClear" class="chip" hidden>Remove</button>
+        </div>
+        <label class="rec-row" for="recRpm" id="recRpmRow" hidden>Recorded at <input id="recRpm" type="number" min="800" max="20000" step="100" value="3000"> rpm</label>
+      </div>
+      <button id="startBtn" class="start">Start engine</button>
+      <div class="status" id="status">Engine off</div>
+      <label class="vol" for="vol">Volume <input type="range" id="vol" min="0" max="100" value="70"></label>
+      <p class="hint" id="hint">Hold REV to rev when the car is stopped. On the move, the sound follows your GPS speed.</p>
+    </section>
+
+    <section class="garage" aria-label="Choose an engine">
+      <div class="garage-head"><h2>Garage</h2><span id="count"></span></div>
+      <div class="grid" id="grid"></div>
+    </section>
+  </main>
+
+  <footer class="note">Connect your phone to the car by Bluetooth so the sound plays through the car speakers, and keep the screen on. Each car's sound is generated live to resemble its engine. For the real sound, load a recording of that car (a steady idle or constant-rev clip works best) and set the rpm it was recorded at. Car names only describe the engine; this site isn't connected to any car maker. Keep the volume low enough to hear sirens and horns, and set everything up before you drive.</footer>
+</div>
+
+<script>
+(() => {
+// ---------- Engine catalogue ----------
+// res: exhaust resonances [Hz, Q, gain]. acc: km/h per second off the line in Demo.
+const CARS = [
+ {id:'f812',   name:'Ferrari 812 Superfast',   eng:'6.5 V12 · naturally aspirated', color:'#d23a2f', n:12, pat:'even',  redline:8900, idle:1000, top:340, gears:7, acc:31, res:[[300,3.5,1],[900,5,.8],[2100,6,.6]],  decay:1.6, noise:.1,  sub:.12, drive:2.0, lp:2400, pops:.3, jitter:.02},
+ {id:'laf',    name:'Ferrari LaFerrari',       eng:'6.3 V12 hybrid',                color:'#b8141c', n:12, pat:'even',  redline:9250, idle:1000, top:350, gears:7, acc:38, res:[[310,3.5,1],[950,5,.85],[2300,6,.6]], decay:1.5, noise:.09, sub:.12, drive:2.1, lp:2600, pops:.3, jitter:.02, hybrid:.8},
+ {id:'f8',     name:'Ferrari F8 Tributo',      eng:'3.9 V8 flat-plane · twin turbo',color:'#e8402f', n:8,  pat:'flat',  redline:8000, idle:950,  top:340, gears:7, acc:32, res:[[220,3.5,1],[650,5,.75],[1700,6,.45]], decay:2.2, noise:.18, sub:.25, drive:2.2, lp:1700, pops:.4, turbo:.7},
+ {id:'aven',   name:'Lamborghini Aventador',   eng:'6.5 V12 · naturally aspirated', color:'#f5a623', n:12, pat:'even',  redline:8500, idle:1000, top:350, gears:7, acc:33, res:[[230,2.6,1],[700,3.2,.9],[1900,4,.6]], decay:1.9, noise:.2, sub:.3, drive:3.2, lp:2200, pops:1.4, jitter:.05},
+ {id:'hura',   name:'Lamborghini Huracán',     eng:'5.2 V10 · naturally aspirated', color:'#9bd636', n:10, pat:'even',  redline:8500, idle:1000, top:325, gears:7, acc:31, res:[[260,3,1],[780,3.5,.9],[2100,4.5,.6]], decay:1.8, noise:.24, sub:.22, drive:3.4, lp:2300, pops:1.3, jitter:.04},
+ {id:'p1',     name:'McLaren P1',              eng:'3.8 V8 twin turbo + electric',  color:'#ff7a1a', n:8,  pat:'flat',  redline:8500, idle:1000, top:350, gears:7, acc:40, res:[[240,3,1],[700,4,.8],[1800,5,.5]], decay:1.9, noise:.3, sub:.18, drive:2.8, lp:1700, pops:.6, turbo:1, hybrid:.7, jitter:.04},
+ {id:'chiron', name:'Bugatti Chiron',          eng:'8.0 W16 · quad turbo',          color:'#2f6fe0', n:16, pat:'even',  redline:6800, idle:800,  top:420, gears:7, acc:38, res:[[110,2.2,1],[330,3,.6],[800,4,.3]], decay:3.4, noise:.35, sub:.55, drive:1.6, lp:850, pops:.1, turbo:1.2, jitter:.03},
+ {id:'gt3',    name:'Porsche 911 GT3',         eng:'4.0 flat-6 · naturally aspirated',color:'#c9ced6',n:6, pat:'boxer', redline:9000, idle:950,  top:318, gears:7, acc:28, res:[[210,3,1],[620,5,.8],[1800,6,.5]],  decay:2.0, noise:.18, sub:.2,  drive:2.2, lp:1700, pops:.4},
+ {id:'gtr',    name:'Nissan GT-R',             eng:'3.8 V6 · twin turbo',           color:'#9aa3ad', n:6,  pat:'even',  redline:7100, idle:900,  top:315, gears:6, acc:28, res:[[165,3,1],[500,4,.6],[1300,5,.3]],  decay:3.0, noise:.3,  sub:.3,  drive:2.2, lp:1100, pops:.3, turbo:.9},
+ {id:'supra',  name:'Toyota Supra',            eng:'3.0 inline-6 · turbo',          color:'#e04a2a', n:6,  pat:'even',  redline:7000, idle:850,  top:280, gears:6, acc:24, res:[[180,3,1],[520,4,.7],[1400,5,.4]],  decay:2.8, noise:.25, sub:.3,  drive:2.4, lp:1200, pops:.6, turbo:.9},
+ {id:'hellcat',name:'Dodge Challenger Hellcat',eng:'6.2 V8 · supercharged',         color:'#3a3f46', n:8,  pat:'cross', redline:6500, idle:750,  top:320, gears:8, acc:27, res:[[110,2.5,1],[300,3,.8],[800,4,.4]], decay:3.5, noise:.25, sub:.6,  drive:3.0, lp:900,  pops:.5, superc:1},
+ {id:'stang',  name:'Ford Mustang GT',         eng:'5.0 V8 crossplane',             color:'#1b1d22', n:8,  pat:'cross', redline:7500, idle:700,  top:250, gears:6, acc:22, res:[[95,2.5,1],[250,3,.8],[650,4,.4]],  decay:3.8, noise:.25, sub:.7,  drive:3.2, lp:850,  pops:.7, stripe:'#f2f2f2'},
+ {id:'rx7',    name:'Mazda RX-7',              eng:'1.3 twin rotary · turbo',       color:'#19a7b8', n:4,  pat:'even',  redline:8000, idle:1000, top:260, gears:5, acc:21, res:[[260,2.5,1],[800,3,.8],[2200,4,.6]], decay:4.5, noise:.35, sub:.15, drive:3.5, lp:2200, pops:1,  turbo:.7},
+];
+CARS.forEach(c=>{ c.top=160; }); // top speed 160 km/h in test drive and GPS drive; gears spread over 0-160
+const PAT = {
+  cross:[1,.62,1,1,.62,1,.62,.62], flat:[1,.8], boxer:[1,.85,.95,.8,1,.86],
+  five:[1,.55,.9,.5,.8], v10:[1,.88,.97,.84,1,.9,.95,.86,1,.9]
+};
+function engineCfg(c){
+  const angles=[], amps=[]; const p=PAT[c.pat];
+  for(let i=0;i<c.n;i++){ angles.push(i*720/c.n); amps.push(p ? p[i%p.length] : .94+.06*Math.random()); }
+  return {angles, amps, decay:c.decay, noise:c.noise, res:c.res, sub:c.sub, jitter:c.jitter!=null?c.jitter:(c.pat==='cross'?.12:.05)};
+}
+function gearTops(c){ const g=[]; for(let i=0;i<c.gears;i++) g.push(c.top*(.4+.6*Math.pow(i/(c.gears-1),.6))); return g; } // longer, evenly balanced gears
+
+// ---------- Audio worklet: firing pulses through exhaust resonators ----------
+const WORKLET = `
+class EngineProc extends AudioWorkletProcessor{
+ static get parameterDescriptors(){return[{name:'rpm',defaultValue:0,automationRate:'k-rate'},{name:'load',defaultValue:0,automationRate:'k-rate'},{name:'pop',defaultValue:0,automationRate:'k-rate'}]}
+ constructor(){super();this.ph=0;this.r=0;this.l=0;this.env=0;this.amp=0;this.lp=0;this.dcx=0;this.dcy=0;this.bang=0;
+  this.setCfg({angles:[0,180,360,540],amps:[1,1,1,1],decay:3,noise:.3,res:[[180,3,1],[500,4,.6],[1300,5,.3]],sub:.3,jitter:.05});
+  this.port.onmessage=e=>this.setCfg(e.data)}
+ setCfg(c){this.c=c;this.ang=c.angles.map(a=>a/720);
+  this.rs=c.res.map(([f,q,g])=>{const w=2*Math.PI*Math.min(f,sampleRate*.45)/sampleRate,al=Math.sin(w)/(2*q),a0=1+al;
+   return{b0:al/a0*g,b2:-al/a0*g,a1:-2*Math.cos(w)/a0,a2:(1-al)/a0,x1:0,x2:0,y1:0,y2:0}})}
+ process(_,outs,p){const o=outs[0];const out=o[0];if(!out)return true;const c=this.c,n=this.ang.length,sr=sampleRate;
+  const rT=p.rpm[0],lT=p.load[0],pop=p.pop[0];
+  for(let i=0;i<out.length;i++){
+   this.r+=(rT-this.r)*0.002;this.l+=(lT-this.l)*0.003;const r=this.r;let x=0;
+   if(r>40){const inc=r/120/sr,prev=this.ph;let ph=prev+inc,wrap=false;if(ph>=1){ph-=1;wrap=true}this.ph=ph;
+    for(let k=0;k<n;k++){const a=this.ang[k];const hit=wrap?(a>prev||a<=ph):(a>prev&&a<=ph);
+     if(hit){this.amp=c.amps[k]*(0.3+0.7*this.l)*(1+c.jitter*(Math.random()*2-1));this.env=1}}
+    const fire=r/120*n,dS=Math.min(c.decay*sr/1000,0.55*sr/fire);this.env*=Math.exp(-1/dS);
+    x=this.amp*this.env*((1-c.noise)+c.noise*(Math.random()*2-1)*1.6)}
+   else{this.env*=0.999}
+   if(pop>0&&r>40&&Math.random()<pop*0.00008)this.bang=0.8+Math.random()*0.9;
+   let b=0;if(this.bang>0.001){b=this.bang*(Math.random()*2-1);this.bang*=0.9985}
+   const ex=x+b*0.6;let y=0;
+   for(const s of this.rs){const v=s.b0*ex+s.b2*s.x2-s.a1*s.y1-s.a2*s.y2;s.x2=s.x1;s.x1=ex;s.y2=s.y1;s.y1=v;y+=v}
+   this.lp+=(ex-this.lp)*0.04;y+=this.lp*c.sub*2.5+b*0.25;
+   const d=y-this.dcx+0.995*this.dcy;this.dcx=y;this.dcy=d;out[i]=d*0.9}
+  for(let ch=1;ch<o.length;ch++)o[ch].set(out);return true}}
+registerProcessor('engine',EngineProc);`;
+
+// ---------- State ----------
+const $ = id => document.getElementById(id);
+const store = { get(k,d){ try{ const v=localStorage.getItem('en.'+k); return v==null?d:JSON.parse(v);}catch(e){return d} },
+                set(k,v){ try{ localStorage.setItem('en.'+k,JSON.stringify(v)); }catch(e){} } };
+let car = CARS.find(c=>c.id===store.get('car','f812')) || CARS[0];
+let tops = gearTops(car);
+let unit = store.get('unit','kmh');
+let vol = store.get('vol',70);
+let source = 'gps';
+const S = { auto:true, running:false, startT:0, speed:0, gear:0, rpm:0, load:0, loadT:0, cutT:0, overrunT:0, popKick:0, boost:0, prevLoad:0,
+            gas:false, brake:false, rev:false };
+const G = { speed:0, accel:0, t:0, lastKmh:null, lastT:0, lastPos:null, acc:null, watch:null, ok:false };
+
+// ---------- Audio graph ----------
+let ctx=null, shiftG, genGain, hybOut, shiftReady=null, node, shaper, lp, comp, master, turboOsc, turboGain, supOsc, supBP, supGain, eOsc, eGain, bovBP, bovGain;
+function curve(drive){ const n=2048, a=new Float32Array(n), k=Math.tanh(drive); for(let i=0;i<n;i++){ const x=i/(n-1)*2-1; a[i]=Math.tanh(drive*x)/k; } return a; }
+async function initAudio(){
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if(!AC) throw new Error('no-audio');
+  ctx = new AC({latencyHint:'interactive'});
+  if(!ctx.audioWorklet) throw new Error('no-worklet');
+  const url = URL.createObjectURL(new Blob([WORKLET],{type:'application/javascript'}));
+  try{ await ctx.audioWorklet.addModule(url); }
+  catch(e){ await ctx.audioWorklet.addModule('data:application/javascript;charset=utf-8,'+encodeURIComponent(WORKLET)); }
+  node = new AudioWorkletNode(ctx,'engine',{numberOfInputs:0,outputChannelCount:[2]});
+  shaper = ctx.createWaveShaper(); shaper.oversample='2x';
+  lp = ctx.createBiquadFilter(); lp.type='lowpass'; lp.Q.value=.7;
+  const hp = ctx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=28;
+  comp = ctx.createDynamicsCompressor(); comp.threshold.value=-16; comp.ratio.value=4; comp.attack.value=.003; comp.release.value=.15;
+  master = ctx.createGain(); master.gain.value = vol/100;
+  shiftG = ctx.createGain(); shiftG.gain.value = 1; shiftReady = loadShift();
+  genGain = ctx.createGain(); genGain.gain.value = 1;
+  node.connect(genGain).connect(shaper).connect(lp).connect(hp).connect(comp).connect(shiftG).connect(master).connect(ctx.destination);
+  turboOsc = ctx.createOscillator(); turboGain = ctx.createGain(); turboGain.gain.value=0; turboOsc.connect(turboGain).connect(comp); turboOsc.start();
+  supOsc = ctx.createOscillator(); supOsc.type='sawtooth'; supBP = ctx.createBiquadFilter(); supBP.type='bandpass'; supBP.Q.value=5;
+  supGain = ctx.createGain(); supGain.gain.value=0; supOsc.connect(supBP).connect(supGain).connect(comp); supOsc.start();
+  eOsc = ctx.createOscillator(); eOsc.type='triangle'; eGain = ctx.createGain(); eGain.gain.value=0; eOsc.connect(eGain).connect(comp); eOsc.start();
+  const nb = ctx.createBuffer(1, ctx.sampleRate*2, ctx.sampleRate); const d=nb.getChannelData(0); for(let i=0;i<d.length;i++) d[i]=Math.random()*2-1;
+  const ns = ctx.createBufferSource(); ns.buffer=nb; ns.loop=true;
+  bovBP = ctx.createBiquadFilter(); bovBP.type='bandpass'; bovBP.Q.value=1.4; bovBP.frequency.value=2500;
+  bovGain = ctx.createGain(); bovGain.gain.value=0; ns.connect(bovBP).connect(bovGain).connect(master); ns.start();
+  recGain = ctx.createGain(); recGain.gain.value=0; recGain.connect(lp);
+  hybOut = ctx.createGain(); hybOut.gain.value=1; hybOut.connect(comp); // real idle that blends into the generated engine
+  applyCar();
+}
+
+// ---------- Real recordings (kept in this browser) ----------
+const REC = {};
+let recSrc=null, recGain=null, recFor=null;
+const idb = {
+  db:null,
+  open(){ if(this.db) return Promise.resolve(this.db);
+    return new Promise((res,rej)=>{ const r=indexedDB.open('engine-note',1);
+      r.onupgradeneeded=()=>r.result.createObjectStore('rec'); r.onsuccess=()=>{this.db=r.result;res(r.result)}; r.onerror=()=>rej(r.error); }); },
+  async tx(mode, fn){ try{ const db=await this.open(); return await new Promise((res,rej)=>{ const t=db.transaction('rec',mode); const q=fn(t.objectStore('rec')); t.oncomplete=()=>res(q&&q.result); t.onerror=()=>rej(t.error); }); }catch(e){ return null; } },
+  put(k,v){ return this.tx('readwrite',s=>s.put(v,k)); },
+  get(k){ return this.tx('readonly',s=>s.get(k)); },
+  del(k){ return this.tx('readwrite',s=>s.delete(k)); }
+};
+async function ensureBuf(rec){
+  if(rec.buf || !ctx) return rec.buf;
+  try{ rec.buf = await ctx.decodeAudioData(rec.bytes.slice(0)); }
+  catch(e){ rec.bad=true; setStatus('That file couldn’t be played. Try an MP3, WAV or M4A.','warn'); }
+  return rec.buf;
+}
+function stopRec(){ if(recSrc){ try{recSrc.stop()}catch(e){} recSrc.disconnect(); recSrc=null; recFor=null; } }
+async function startRec(){
+  const rec=REC[car.id];
+  if(!S.running || !rec){ stopRec(); return; }
+  if(recFor===car.id && recSrc) return;
+  stopRec();
+  const id=car.id, buf=await ensureBuf(rec);
+  if(!buf || car.id!==id || !S.running) return;
+  if(rec.bank){ // several real loops from the clip, each at its own rpm; the two nearest are blended
+    const ch=buf.getChannelData(0), k=buf.sampleRate/rec.bank.sr; let pos=0; const parts=[];
+    for(const L of rec.bank.loops){
+      const n=Math.round(L.len*k), ab=ctx.createBuffer(1,n,buf.sampleRate);
+      ab.copyToChannel(ch.subarray(Math.round(pos*k), Math.round(pos*k)+n),0); pos+=L.len;
+      const src=ctx.createBufferSource(); src.buffer=ab; src.loop=true;
+      const g=ctx.createGain(); g.gain.value=0; src.connect(g).connect(rec.bank.hybrid ? hybOut : recGain);
+      src.start(0, Math.random()*ab.duration); parts.push({src,g,f:L.f});
+    }
+    recSrc={parts, stop(){ parts.forEach(p=>{ try{p.src.stop()}catch(e){} }); }, disconnect(){ parts.forEach(p=>p.g.disconnect()); }};
+    recFor=id; return;
+  }
+  recSrc=ctx.createBufferSource(); recSrc.buffer=buf; recSrc.loop=true;
+  const trim = !rec.builtin && buf.duration>.4 && !/loop/i.test(rec.name);
+  if(trim){ recSrc.loopStart=.05; recSrc.loopEnd=buf.duration-.05; }
+  recSrc.connect(recGain); recSrc.start(0, trim?.05:0); recFor=id;
+}
+function updRecUI(){
+  const rec=REC[car.id];
+  $('recState').textContent = rec ? (rec.builtin ? 'Real recording' : 'Your recording · '+rec.name) : 'Generated';
+  $('recLoad').textContent = rec ? 'Replace recording' : 'Load real recording';
+  $('recClear').hidden = !rec || !!rec.builtin; $('recRpmRow').hidden = !rec;
+  $('recRpm').value = rec ? rec.refRpm : 3000;
+  CARS.forEach(c=>{ const t=document.querySelector('#car-'+c.id+' .tag'); if(t){ t.hidden=!REC[c.id]; t.textContent = REC[c.id]&&REC[c.id].builtin ? 'Real sound' : 'Your sound'; } });
+}
+$('recFile').addEventListener('change', async e=>{
+  const f=e.target.files && e.target.files[0]; e.target.value='';
+  if(!f) return;
+  if(f.size>25*1024*1024){ setStatus('That file is over 25 MB. Use a shorter clip.','warn'); return; }
+  const bytes=await f.arrayBuffer();
+  const m=f.name.match(/(\d{3,5})\s*rpm/i);
+  const rec={bytes, name:f.name.replace(/\.[^.]+$/,'').slice(0,40), refRpm: m ? clamp(+m[1],800,20000) : (+$('recRpm').value||3000)};
+  REC[car.id]=rec; stopRec();
+  if(ctx){ await ensureBuf(rec); if(rec.bad){ delete REC[car.id]; updRecUI(); return; } }
+  idb.put(car.id,{bytes:rec.bytes,name:rec.name,refRpm:rec.refRpm});
+  updRecUI(); startRec();
+  setStatus('Recording loaded for '+car.name,'ok');
+});
+$('recClear').addEventListener('click',()=>{ delete REC[car.id]; idb.del(car.id); stopRec(); updRecUI(); loadBuiltin(); });
+$('recRpm').addEventListener('change',()=>{ const rec=REC[car.id]; if(!rec) return;
+  rec.refRpm=clamp(+$('recRpm').value||3000,800,20000); $('recRpm').value=rec.refRpm;
+  idb.put(car.id,{bytes:rec.bytes,name:rec.name,refRpm:rec.refRpm}); });
+// Real recordings that come with the site (steady-rpm loops cut from the owner's clips)
+const BUILTIN = { chiron:{file:'chiron-idle.wav',map:'chiron-idle.json'}, hura:{file:'hura-bank.wav',map:'hura-bank.json'}, aven:{file:'aven-bank5.wav',map:'aven-bank5.json'}, f812:{file:'f812-bank.wav',map:'f812-bank.json'},
+                  laf:{file:'f812-bank.wav',map:'f812-bank.json'}, f8:{file:'f812-bank.wav',map:'f812-bank.json'}, hellcat:{file:'hellcat-loop2.mp3',refRpm:4470},
+                  stang:{file:'stang-loop.mp3',refRpm:5030}, gt3:{file:'gt3-bank7.wav',map:'gt3-bank7.json'} };
+async function loadBuiltin(){
+  await Promise.all(Object.entries(BUILTIN).map(async ([id,b])=>{
+    if(REC[id]) return;
+    try{ const r=await fetch(b.file); if(!r.ok) return; const bytes=await r.arrayBuffer();
+      let bank=null; if(b.map){ const m=await fetch(b.map); if(!m.ok) return; bank=await m.json(); }
+      if(!REC[id]) REC[id]={bytes, name:'Real recording', refRpm:b.refRpm||3000, builtin:true, bank}; }catch(e){}
+  }));
+  updRecUI(); if(S.running) startRec();
+}
+async function loadSaved(){
+  for(const c of CARS){ const v=await idb.get(c.id); if(v && v.bytes) REC[c.id]={bytes:v.bytes,name:v.name||'recording',refRpm:v.refRpm||3000}; }
+  updRecUI();
+}
+// Gear-shift sound. Cars with a real recording play their own recorded shift;
+// the others use their own engine with a cut shaped like their gearbox type.
+const START_SAMPLE = { aven:'start-aven-long.wav', hura:'start-hura-long.wav', chiron:'start-chiron.wav', gt3:'start-gt3.wav' };
+const START_FADE = { hura:1.5, aven:2.2, chiron:2.0, gt3:2.0 }; // seconds the cold start takes to blend into the engine
+const PRESS_SAMPLE = { aven:'press-aven.wav' };
+const REV_SAMPLE = { gt3:'rev-gt3.wav' };
+const LIFT_SAMPLE = { gt3:'lift-gt3.wav' }; // real sound when the gas is released while driving // real held-rev sound while standing still // real bark when the gas is first pressed from idle
+const SHIFT_SAMPLE = { aven:'shift-aven-xl.wav', hura:'shift-hura-xl.wav', f812:'shift-xl.wav', laf:'shift-xl.wav', f8:'shift-xl.wav', hellcat:'shift-hellcat-xl.wav', gt3:'shift-gt3-rs.wav', stang:'shift-stang-xl.wav' };
+const SHIFT_STYLE = { // [time s, engine level] points
+  dct:    [[.01,.2],[.03,.2],[.035,.75],[.042,.62],[.05,.13],[.1,.17],[.113,.07],[.12,.65],[.127,.55],[.14,.1],[.18,.35],[.25,.78],[.3,1]],
+  ism:    [[.01,.1],[.04,.08],[.045,1],[.06,.8],[.07,.05],[.2,.05],[.21,.6],[.23,.3],[.3,1]],
+  auto:   [[.04,.5],[.18,.4],[.26,1]],
+  manual: [[.02,.06],[.32,.06],[.42,1]],
+  f1:     [[.005,.3],[.02,1],[.03,.4],[.06,1]] };
+// longer last part of the shift: the engine comes back more gradually
+Object.values(SHIFT_STYLE).forEach(p=>{ p[p.length-1][0]+=.45; });
+const CAR_STYLE = { aven:'ism', hura:'dct', p1:'dct', chiron:'dct', gtr:'dct', supra:'auto', rx7:'manual' };
+const shiftBufs = {};
+const PREFETCH = {};
+for(const f of new Set([...Object.values(SHIFT_SAMPLE),...Object.values(START_SAMPLE),...Object.values(PRESS_SAMPLE),...Object.values(REV_SAMPLE),...Object.values(LIFT_SAMPLE)]))
+  PREFETCH[f] = fetch(f).then(r=>r.ok?r.arrayBuffer():null).catch(()=>null);
+async function loadShift(){
+  await Promise.all(Object.entries(PREFETCH).map(async ([f,p])=>{
+    try{ const ab=await p; if(ab) shiftBufs[f]=await ctx.decodeAudioData(ab.slice(0)); }catch(e){}
+  }));
+}
+// pressing the gas during a cold start ends it right away and the engine takes over
+function endColdStart(){
+  if(!S.startSrc) return;
+  const t=ctx.currentTime, src=S.startSrc; S.startSrc=null;
+  S.startG.gain.cancelScheduledValues(t); S.startG.gain.setValueAtTime(S.startG.gain.value,t); S.startG.gain.linearRampToValueAtTime(0,t+.25);
+  shiftG.gain.cancelScheduledValues(t); shiftG.gain.setValueAtTime(shiftG.gain.value,t); shiftG.gain.linearRampToValueAtTime(1,t+.2);
+  try{ src.stop(t+.3); }catch(e){}
+  if(performance.now()-S.startT < 1100) S.startT=performance.now()-1100;
+}
+function shiftLen(){
+  const b=shiftBufs[SHIFT_SAMPLE[car.id]]; if(b) return b.duration-.03;
+  const p=SHIFT_STYLE[CAR_STYLE[car.id]||'dct']; return Math.max(.05, p[p.length-1][0]-.12);
+}
+function revSound(on){
+  const t=ctx.currentTime;
+  if(on && !S.revSrc){
+    const buf=shiftBufs[REV_SAMPLE[car.id]]; if(!buf) return;
+    const src=ctx.createBufferSource(), g=ctx.createGain(); src.buffer=buf; src.loop=true; g.gain.value=0;
+    src.connect(g).connect(master); src.start(t); g.gain.linearRampToValueAtTime(1,t+.15);
+    shiftG.gain.cancelScheduledValues(t); shiftG.gain.setValueAtTime(shiftG.gain.value,t); shiftG.gain.linearRampToValueAtTime(.05,t+.15);
+    S.revSrc=src; S.revG=g;
+  } else if(!on && S.revSrc){
+    const src=S.revSrc, g=S.revG; S.revSrc=null;
+    g.gain.cancelScheduledValues(t); g.gain.setValueAtTime(g.gain.value,t); g.gain.linearRampToValueAtTime(0,t+.3);
+    shiftG.gain.cancelScheduledValues(t); shiftG.gain.setValueAtTime(shiftG.gain.value,t); shiftG.gain.linearRampToValueAtTime(1,t+.3);
+    try{ src.stop(t+.35); }catch(e){}
+  }
+}
+function liftOff(){
+  const buf=shiftBufs[LIFT_SAMPLE[car.id]]; if(!buf || !ctx || !shiftG || S.revSrc) return;
+  const g=shiftG.gain, t=ctx.currentTime, L=buf.duration;
+  g.cancelScheduledValues(t); g.setValueAtTime(g.value,t);
+  g.linearRampToValueAtTime(.15,t+.05); g.setValueAtTime(.15,t+L-.2); g.linearRampToValueAtTime(1,t+L+.1);
+  const src=ctx.createBufferSource(); src.buffer=buf; src.connect(master); src.start(t);
+}
+function gasPress(){
+  const buf=shiftBufs[PRESS_SAMPLE[car.id]]; if(!buf || !ctx || !shiftG) return;
+  const g=shiftG.gain, t=ctx.currentTime, L=buf.duration;
+  g.cancelScheduledValues(t); g.setValueAtTime(g.value,t);
+  g.linearRampToValueAtTime(.1,t+.03); g.setValueAtTime(.1,t+L-.25); g.linearRampToValueAtTime(1,t+L);
+  const src=ctx.createBufferSource(); src.buffer=buf; src.connect(master); src.start(t);
+}
+function shiftCut(){
+  if(!ctx || !shiftG) return;
+  const g=shiftG.gain, t=ctx.currentTime;
+  g.cancelScheduledValues(t); g.setValueAtTime(g.value,t);
+  const buf=shiftBufs[SHIFT_SAMPLE[car.id]];
+  if(buf){ // engine goes quiet while this car's real shift sound plays, then comes back
+    const L=buf.duration;
+    const src=ctx.createBufferSource(); src.buffer=buf;
+    g.linearRampToValueAtTime(.02,t+.01);
+    g.setValueAtTime(.02,t+L-.25); g.linearRampToValueAtTime(.8,t+L); g.linearRampToValueAtTime(1,t+L+.4); // longer real bark at the end, then a smooth blend back
+    src.connect(master); src.start(t); return;
+  }
+  SHIFT_STYLE[CAR_STYLE[car.id]||'dct'].forEach(([dt,v])=>g.linearRampToValueAtTime(v,t+dt));
+}
+function applyCar(){
+  tops = gearTops(car);
+  if(!ctx) return;
+  node.port.postMessage(engineCfg(car));
+  shaper.curve = curve(car.drive);
+}
+
+// ---------- Physics ----------
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+function curTops(){ return tops; }
+function doUpshift(force){
+  if(S.gear>=car.gears-1) return false;
+  S.gear++; S.postT=1.6; S.slideFrom=S.rpm;
+  { const sb=shiftBufs[SHIFT_SAMPLE[car.id]]; S.slideDur=S.slideT = sb ? Math.max(.3, sb.duration-.2) : 1.2; } /* engine is already at the new gear's rpm when it comes back */
+  if(force || (S.load>.5 && S.loadT>.5)){ S.cutT=shiftLen(); shiftCut(); if(S.load>.6) S.popKick=.22; }
+  return true;
+}
+function doDownshift(){ // only if the engine won't over-rev in the lower gear
+  if(S.gear<=0 || rpmIn(S.gear-1) > car.redline*.98) return false;
+  S.gear--; S.slideFrom=S.rpm; S.slideDur=S.slideT=.25; if(car.pops) S.popKick=.15; return true;
+}
+function rpmIn(g){ return S.speed/curTops()[g]*car.redline; }
+function tick(dt, now){
+  // speed + driver load
+  if(source==='demo'){
+    let a;
+    if(S.gas){ a = car.acc*(1-Math.pow(S.speed/car.top,2))*(S.cutT>0?.3:1); S.loadT=1;
+      if(S.postT>0) a*= .35+.65*Math.pow(1-S.postT/1.6,1.5); // after a shift the revs build back up slowly
+      // last part of each gear: revs climb more slowly up to the shift, so the top-end sound lasts longer
+      if(S.gear<car.gears-1){ const up=car.idle+(car.redline-car.idle)*.95, L=[.65,.35,.75], k=clamp((rpmIn(S.gear)-up*L[0])/(up*L[1]),0,1); a*=1-L[2]*k*k*(3-2*k); /* GT3 holds the top end longest */ } }
+    else if(S.brake){ a = -38; S.loadT=0; }
+    else { a = -(1.5+S.speed*.012); S.loadT=(S.rev&&S.speed<2)?1:0; }
+    S.speed = clamp(S.speed + a*dt, 0, car.top);
+    if(!S.auto) S.speed=Math.min(S.speed, curTops()[S.gear]); // manual: the car can't go faster than redline in this gear
+  } else {
+    const since = Math.min((now-G.t)/1000, 1.2);
+    const pred = G.ok ? Math.max(0, G.speed + G.accel*since) : 0;
+    S.speed += (pred - S.speed)*Math.min(1, dt*4);
+    if(S.speed<1.5 && pred<1.5) S.speed=Math.max(0,S.speed-dt*4);
+    if(S.speed<2 && S.rev) S.loadT=1;
+    else if(G.accel>1.5) S.loadT=clamp(.3+G.accel/14,0,1);
+    else if(G.accel<-2) S.loadT=0;
+    else S.loadT=S.speed>5?.22:.05;
+  }
+  if(!S.running){ S.rpm=0; S.gear=0; S.load=0; return; }
+
+  // starting sequence
+  if(S.startSrc && (S.gas || S.rev || S.loadT>.5)) endColdStart();
+  const st=(now-S.startT)/1000;
+  if(S.running && st>1.05 && !S.startSrc){ // first press of the gas from idle plays the car's real bark
+    if(S.loadT>.5 && !S.pressLatch){ S.pressLatch=true; if(S.rpm<car.idle*1.6) gasPress(); }
+    else if(S.loadT<.2) S.pressLatch=false;
+  }
+  if(ctx && REV_SAMPLE[car.id]) revSound(S.running && st>1.05 && !S.startSrc && S.rev && !S.gas && S.speed<2);
+  let rpmT, loadOut;
+  if(st<.75){ rpmT=230+60*Math.sin(st*45); loadOut=.25; S.rpm=rpmT; }
+  else if(st<1.05){ rpmT=car.idle+car.redline*.18; loadOut=.9; }
+  else {
+    // automatic gearbox
+    S.load += (S.loadT-S.load)*Math.min(1,dt*10);
+    if(S.load>.6) S.hiLoad=true;
+    if(S.hiLoad && S.load<.2){ S.overrunT=1.6; S.hiLoad=false; if(S.rpm>car.idle*1.5 && S.cutT<=0) liftOff(); }
+    if(S.speed<1 && !S.gas) S.gear=0;
+    if(S.cutT<=0){
+      const up = car.idle + (car.redline-car.idle)*(.42+.53*S.load);
+      if(S.auto && S.gear<car.gears-1 && rpmIn(S.gear)>up){ doUpshift(); }
+      else if(S.auto && S.gear>0 && rpmIn(S.gear) < car.redline*(.26+.3*S.load) && rpmIn(S.gear-1) < up*.92){ S.gear--; }
+    }
+    let r = rpmIn(S.gear);
+    const stationaryRev = S.speed<2 && S.rev && !S.gas;
+    if(stationaryRev){ r = car.idle + (car.redline*.97-car.idle); }
+    else if(S.gear===0 && S.speed < curTops()[0]*.4){ r = Math.max(r, car.idle + S.load*(car.redline*.5-car.idle)); }
+    rpmT = Math.max(car.idle + 18*Math.sin(now/240), r);
+    loadOut = S.load;
+    if(S.cutT>0){ S.cutT-=dt; loadOut=0; }
+    if(rpmT>=car.redline*.985 && loadOut>.5){ rpmT=car.redline; if(Math.floor(now/70)%2) loadOut=0; }
+  }
+  rpmT = Math.min(rpmT, car.redline);
+  const rate = rpmT>S.rpm ? (loadOut>.5?10:7) : 6;
+  if(st>=.75) S.rpm += (rpmT-S.rpm)*Math.min(1,dt*rate);
+  if(S.slideT>0){ // revs slide down smoothly to the new gear during a shift
+    S.slideT-=dt; const k=clamp(1-S.slideT/S.slideDur,0,1), to=Math.max(car.idle, rpmT);
+    S.rpm = S.slideFrom + (to-S.slideFrom)*(1-Math.pow(1-k,2));
+  }
+  if(S.overrunT>0) S.overrunT-=dt;
+  if(S.postT>0) S.postT-=dt;
+  if(S.popKick>0) S.popKick-=dt;
+  S.loadOut = loadOut;
+  const pop = car.pops*((S.overrunT>0 && loadOut<.1 && S.rpm>car.redline*.4) ? S.overrunT/1.6 : 0) + (S.popKick>0 ? car.pops*1.4 : 0);
+
+  // audio params
+  const t=ctx.currentTime;
+  const rec=REC[car.id], useRec=!!(rec && recSrc && recFor===car.id);
+  const hyb = !!(useRec && rec.bank && rec.bank.hybrid), gen = !useRec || hyb;
+  node.parameters.get('rpm').setValueAtTime(gen?S.rpm:0,t);
+  node.parameters.get('load').setValueAtTime(loadOut,t);
+  node.parameters.get('pop').setValueAtTime(gen?pop:0,t);
+  if(hyb){ // real idle near idle rpm, generated engine above it
+    const P=recSrc.parts, mI=clamp(1-(S.rpm-car.idle*1.1)/(car.idle*.7),0,1);
+    P[0].g.gain.setTargetAtTime(mI*.9, t, .05); P[0].src.playbackRate.setTargetAtTime(clamp(S.rpm/car.idle,.7,1.6), t, .03);
+    genGain.gain.setTargetAtTime(1-mI, t, .05);
+    recGain.gain.setTargetAtTime(0, t, .03);
+    lp.frequency.setTargetAtTime(car.lp*(.55+.9*loadOut) + S.rpm*.12, t, .05);
+  } else if(useRec){
+    genGain.gain.setTargetAtTime(1, t, .05);
+    if(rec.bank){
+      const P=recSrc.parts, fi=P[0].f, ft=Math.max(...P.map(p=>p.f));
+      const e=Math.log(ft/fi)/Math.log(car.redline*.97/car.idle);
+      let tf=fi*Math.pow(Math.max(S.rpm,car.idle*.8)/car.idle,e);
+      const M=rec.bank.map; if(M){ const r=Math.max(S.rpm,car.idle*.8); let i=0; while(i<M.length-2 && r>M[i+1][0]) i++;
+        tf=M[i][1]*Math.pow(M[i+1][1]/M[i][1], Math.log(r/M[i][0])/Math.log(M[i+1][0]/M[i][0])); }
+      let a=0; for(let i=0;i<P.length;i++) if(P[i].f<=tf) a=i;
+      const b=Math.min(a+1,P.length-1); let x=(a===b||tf<=P[a].f)?0:clamp(Math.log(tf/P[a].f)/Math.log(P[b].f/P[a].f),0,1);
+      if(rec.bank.narrow) x=clamp((x-.35)/.3,0,1); // mostly one clean piece at a time, short blend between them
+      P.forEach((p,i)=>{ const g = i===a ? Math.cos(x*Math.PI/2) : (i===b&&b!==a ? Math.sin(x*Math.PI/2) : 0);
+        p.g.gain.setTargetAtTime(g, t, .04); p.src.playbackRate.setTargetAtTime(clamp(tf/p.f,.4,2), t, .02); });
+      // off the gas above idle: softer and duller, like a real engine coasting
+      const coast = (S.rpm>car.idle*1.3 && loadOut<.12) ? 1 : 0;
+      lp.frequency.setTargetAtTime(18000 - coast*12000, t, .12);
+    } else {
+      recSrc.playbackRate.setTargetAtTime(clamp(Math.max(S.rpm,300)/rec.refRpm,.12,4), t, .03);
+      lp.frequency.setTargetAtTime(2500+loadOut*14000, t, .05);
+    }
+    recGain.gain.setTargetAtTime(rec.bank && S.rpm>car.idle*1.3 && loadOut<.12 ? .4 : .55+.45*loadOut, t, .12);
+  } else {
+    genGain.gain.setTargetAtTime(1, t, .05);
+    recGain.gain.setTargetAtTime(0, t, .03);
+    lp.frequency.setTargetAtTime(car.lp*(.55+.9*loadOut) + S.rpm*.12, t, .05);
+  }
+  const mix = gen?1:0;
+  const boostT = (car.turbo && loadOut>.45 && S.rpm>car.redline*.3) ? loadOut*S.rpm/car.redline : 0;
+  S.boost += (boostT-S.boost)*Math.min(1, dt*(boostT>S.boost?2.2:7));
+  turboOsc.frequency.setTargetAtTime(1800+S.boost*4200, t, .05);
+  turboGain.gain.setTargetAtTime(mix*(car.turbo||0)*S.boost*.03, t, .05);
+  if(mix && car.turbo && S.prevLoad>.55 && loadOut<.15 && S.boost>.3){
+    bovGain.gain.cancelScheduledValues(t); bovGain.gain.setValueAtTime(car.turbo*.2*S.boost,t); bovGain.gain.exponentialRampToValueAtTime(.0001,t+.45);
+    bovBP.frequency.cancelScheduledValues(t); bovBP.frequency.setValueAtTime(3400,t); bovBP.frequency.exponentialRampToValueAtTime(1300,t+.45);
+  }
+  S.prevLoad = loadOut;
+  const sf = S.rpm/60*14;
+  supOsc.frequency.setTargetAtTime(sf,t,.03); supBP.frequency.setTargetAtTime(sf,t,.03);
+  supGain.gain.setTargetAtTime(mix*(car.superc||0)*(.01+.05*loadOut)*(S.rpm/car.redline), t, .05);
+  eOsc.frequency.setTargetAtTime(120+S.speed*14, t, .05);
+  eGain.gain.setTargetAtTime(mix*(car.hybrid||0)*.016*(.3+loadOut)*(S.speed>1?1:.2), t, .05);
+}
+
+// ---------- GPS ----------
+function hav(a,b){ const R=6371000, t=x=>x*Math.PI/180; const dLat=t(b.latitude-a.latitude), dLon=t(b.longitude-a.longitude);
+  const h=Math.sin(dLat/2)**2+Math.cos(t(a.latitude))*Math.cos(t(b.latitude))*Math.sin(dLon/2)**2; return 2*R*Math.asin(Math.sqrt(h)); }
+function startGps(){
+  if(G.watch!=null) return;
+  if(!('geolocation' in navigator)){ gpsFail('This browser has no location access. Use Test drive.'); return; }
+  setStatus('Waiting for GPS…','warn');
+  try{
+    G.watch = navigator.geolocation.watchPosition(p=>{
+      const c=p.coords, ts=p.timestamp||Date.now();
+      let ms = (c.speed!=null && !isNaN(c.speed)) ? c.speed : null;
+      if(ms==null && G.lastPos){ const dt=(ts-G.lastT)/1000; if(dt>0) ms=hav(G.lastPos,c)/dt; }
+      const kmh = Math.max(0,(ms||0)*3.6);
+      if(G.lastKmh!=null){ const dt=(ts-G.lastT)/1000; if(dt>0.2){ const a=clamp((kmh-G.lastKmh)/dt,-40,40); G.accel=G.accel*.4+a*.6; } }
+      G.lastKmh=kmh; G.lastT=ts; G.lastPos={latitude:c.latitude,longitude:c.longitude};
+      G.speed=kmh; G.t=performance.now(); G.ok=true; G.acc=c.accuracy;
+      if(source==='gps') setStatus('GPS locked · ±'+Math.round(c.accuracy)+' m','ok');
+    }, err=>{
+      if(err.code===1) gpsFail('Location isn’t allowed here. Allow location for this site, or use Test drive.');
+      else if(source==='gps') setStatus('Weak GPS signal - waiting…','warn'); // keep listening (tunnels, car parks)
+    }, {enableHighAccuracy:true, maximumAge:0, timeout:30000});
+  }catch(e){ gpsFail('Location isn’t available here. Use Test drive.'); }
+}
+function gpsFail(msg){
+  if(G.watch!=null){ try{navigator.geolocation.clearWatch(G.watch)}catch(e){} G.watch=null; }
+  G.ok=false; setSource('demo'); setStatus(msg,'warn');
+}
+
+// ---------- UI ----------
+function setStatus(t,cls){ const s=$('status'); s.textContent=t; s.className='status'+(cls?' '+cls:''); }
+function setSource(src){
+  source=src;
+  $('srcGps').setAttribute('aria-pressed', src==='gps'); $('srcDemo').setAttribute('aria-pressed', src==='demo');
+  $('pedals').hidden = src!=='demo';
+  $('hint').textContent = src==='demo' ? 'Hold Gas to accelerate. Hold REV to rev standing still. Keyboard: ↑ gas, ↓ brake.' : 'Hold REV to rev when the car is stopped. On the move, the sound follows your GPS speed.';
+  if(src==='gps') startGps(); else if(!$('status').classList.contains('warn')) setStatus(S.running?'Test drive':'Engine off');
+}
+function carSVG(c){
+  const glass='#0c1016';
+  const stripe = c.stripe ? `<path d="M60 31 C74 21 92 16 108 16 L112 16 L104 52 L92 52 Z" fill="${c.stripe}" opacity=".9"/>` : '';
+  return `<svg viewBox="0 0 200 70" aria-hidden="true">
+  <ellipse cx="100" cy="62" rx="88" ry="4" fill="#000" opacity=".45"/>
+  <path d="M8 47 C8 41 14 38 24 36 L58 31 C70 22 86 15 108 15 C126 15 140 20 152 28 L176 32 C186 34 192 39 192 45 L192 49 C192 51 190 52 188 52 L174 52 A15 15 0 0 0 144 52 L64 52 A15 15 0 0 0 34 52 L12 52 C9 52 8 50 8 47 Z" fill="${c.color}" stroke="#ffffff22" stroke-width="1"/>
+  ${stripe}
+  <path d="M68 31 C78 23 91 19 106 19 C120 19 131 23 141 30 Z" fill="${glass}"/>
+  <path d="M24 42 L60 40" stroke="#00000055" stroke-width="2"/>
+  <circle cx="49" cy="52" r="12" fill="#0a0c0f"/><circle cx="49" cy="52" r="6.5" fill="#a8b0ba"/>
+  <circle cx="159" cy="52" r="12" fill="#0a0c0f"/><circle cx="159" cy="52" r="6.5" fill="#a8b0ba"/>
+  </svg>`;
+}
+function renderGarage(){
+  const g=$('grid'); g.innerHTML='';
+  CARS.forEach(c=>{
+    const b=document.createElement('button'); b.className='car'; b.id='car-'+c.id; b.setAttribute('aria-pressed', c.id===car.id);
+    b.innerHTML = carSVG(c)+`<b></b><span></span><div class="spec"><em style="font-style:normal">${(c.redline/1000).toFixed(c.redline%1000?1:0)}k rpm</em><em style="font-style:normal">${c.gears}-speed</em><em class="tag" hidden>Your sound</em></div>`;
+    b.querySelector('b').textContent=c.name; b.querySelector('span').textContent=c.eng;
+    b.addEventListener('click',()=>selectCar(c));
+    g.appendChild(b);
+  });
+  $('count').textContent = CARS.length+' engines';
+}
+function selectCar(c){
+  if(S.revSrc && ctx) revSound(false);
+  car=c; store.set('car',c.id);
+  document.querySelectorAll('.car').forEach(el=>el.setAttribute('aria-pressed', el.id==='car-'+c.id));
+  $('curName').textContent=c.name; $('curEng').textContent=c.eng;
+  S.gear=Math.min(S.gear,c.gears-1);
+  applyCar();
+  if(S.running && S.rpm < c.idle) S.rpm=c.idle;
+  updRecUI(); startRec();
+}
+let wake=null;
+async function keepAwake(on){
+  try{
+    if(on && 'wakeLock' in navigator){ wake = await navigator.wakeLock.request('screen'); }
+    else if(!on && wake){ await wake.release(); wake=null; }
+  }catch(e){}
+}
+$('startBtn').addEventListener('click', async ()=>{
+  const btn=$('startBtn');
+  if(!S.running){
+    try{
+      if(!ctx) await initAudio();
+      if(ctx.state!=='running') await ctx.resume();
+    }catch(e){ setStatus('This browser can’t run the sound engine. Try Chrome or Safari.','warn'); return; }
+    if(shiftReady) await Promise.race([shiftReady, new Promise(r=>setTimeout(r,500))]);
+    S.running=true; S.startT=performance.now(); S.rpm=0; S.gear=0;
+    btn.textContent='Stop engine'; btn.classList.add('on');
+    keepAwake(true); startRec();
+    const sb=shiftBufs[START_SAMPLE[car.id]];
+    if(sb){ // this car's real cold start, then its engine takes over
+      const t=ctx.currentTime, g=shiftG.gain, L=sb.duration;
+      const F=START_FADE[car.id]||.6;
+      g.cancelScheduledValues(t); g.setValueAtTime(0,t); g.setValueAtTime(0,t+L-F); g.linearRampToValueAtTime(1,t+L);
+      const src=ctx.createBufferSource(), sg=ctx.createGain(); src.buffer=sb; src.connect(sg).connect(master); src.start(t);
+      S.startSrc=src; S.startG=sg; src.onended=()=>{ if(S.startSrc===src) S.startSrc=null; };
+      S.startT=performance.now()+Math.max(0,L-F-1.6)*1000;
+    }
+    if(source==='demo' && !$('status').classList.contains('warn')) setStatus('Test drive');
+    if(source==='gps' && !G.ok) setStatus('Waiting for GPS…','warn');
+  } else {
+    if(S.startSrc){ try{ S.startSrc.stop(); }catch(e){} S.startSrc=null; }
+    if(S.revSrc) revSound(false);
+    S.running=false; btn.textContent='Start engine'; btn.classList.remove('on');
+    if(ctx){ const t=ctx.currentTime; node.parameters.get('rpm').setValueAtTime(0,t); turboGain.gain.setTargetAtTime(0,t,.05); supGain.gain.setTargetAtTime(0,t,.05); eGain.gain.setTargetAtTime(0,t,.05); recGain.gain.setTargetAtTime(0,t,.05); }
+    stopRec(); keepAwake(false);
+  }
+});
+function hold(el, key){
+  const on=e=>{ e.preventDefault(); S[key]=true; el.classList.add('down'); try{el.setPointerCapture(e.pointerId)}catch(_){} };
+  const off=()=>{ S[key]=false; el.classList.remove('down'); };
+  el.addEventListener('pointerdown',on); el.addEventListener('pointerup',off); el.addEventListener('pointercancel',off); el.addEventListener('lostpointercapture',off);
+  el.addEventListener('contextmenu',e=>e.preventDefault());
+}
+hold($('gas'),'gas'); hold($('brake'),'brake'); hold($('rev'),'rev');
+addEventListener('keydown',e=>{ if(e.repeat) return;
+  if(e.key==='ArrowUp'||e.key==='w'){ S.gas=true; S.rev=true; $('gas').classList.add('down'); $('rev').classList.add('down'); e.preventDefault(); }
+  if(e.key==='ArrowDown'||e.key==='s'){ S.brake=true; $('brake').classList.add('down'); e.preventDefault(); } });
+addEventListener('keyup',e=>{
+  if(e.key==='ArrowUp'||e.key==='w'){ S.gas=false; S.rev=false; $('gas').classList.remove('down'); $('rev').classList.remove('down'); }
+  if(e.key==='ArrowDown'||e.key==='s'){ S.brake=false; $('brake').classList.remove('down'); } });
+$('srcGps').addEventListener('click',()=>setSource('gps'));
+$('srcDemo').addEventListener('click',()=>{ setSource('demo'); setStatus(S.running?'Test drive':'Engine off'); });
+$('unitBtn').addEventListener('click',()=>{ unit = unit==='kmh'?'mph':'kmh'; store.set('unit',unit); $('unitBtn').textContent= unit==='kmh'?'km/h':'mph'; });
+$('vol').value=vol;
+$('vol').addEventListener('input',e=>{ vol=+e.target.value; store.set('vol',vol); if(master) master.gain.setTargetAtTime(vol/100, ctx.currentTime, .03); });
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden && S.running) keepAwake(true); });
+
+// ---------- Tachometer ----------
+const cv=$('tach'), g2=cv.getContext('2d');
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const COL={ fg:css('--fg'), muted:css('--muted'), line:css('--line'), accent:css('--accent'), red:css('--red'), panel:css('--panel-2') };
+function draw(){ // yellow-dial sports-car tachometer
+  const W=cv.clientWidth||300, dpr=Math.min(devicePixelRatio||1,2);
+  if(cv.width!==Math.round(W*dpr)){ cv.width=Math.round(W*dpr); cv.height=Math.round(W*dpr); }
+  g2.setTransform(dpr,0,0,dpr,0,0); g2.clearRect(0,0,W,W);
+  const cx=W/2, cy=W/2, R=W*.40, A0=Math.PI*.75, A1=Math.PI*2.25;
+  const maxK=Math.ceil(car.redline/1000)+1, maxR=maxK*1000, ang=v=>A0+(A1-A0)*clamp(v,0,maxR)/maxR;
+  const INK='#111', RED='#d81e1b', disp=css('--display'), body=css('--body');
+  // bezel and yellow face
+  g2.beginPath(); g2.arc(cx,cy,W*.485,0,Math.PI*2); g2.fillStyle='#141414'; g2.fill();
+  g2.lineWidth=Math.max(2,W*.008); g2.strokeStyle='#9aa0a6'; g2.stroke();
+  const face=g2.createRadialGradient(cx,cy-W*.08,W*.05,cx,cy,W*.46);
+  face.addColorStop(0,'#ffe04a'); face.addColorStop(.7,'#f7c516'); face.addColorStop(1,'#e2a90a');
+  g2.beginPath(); g2.arc(cx,cy,W*.455,0,Math.PI*2); g2.fillStyle=face; g2.fill();
+  // red zone band
+  g2.lineCap='butt'; g2.lineWidth=W*.035; g2.strokeStyle=RED;
+  g2.beginPath(); g2.arc(cx,cy,R+W*.022,ang(car.redline),A1); g2.stroke();
+  // ticks and numbers
+  const step = maxK>12 ? 2 : 1;
+  g2.textAlign='center'; g2.textBaseline='middle';
+  for(let k=0;k<=maxK*2;k++){
+    const v=k*500, a=ang(v), major=k%2===0, red=v>=car.redline;
+    const r1=R+W*.035, len=major?W*.06:W*.03;
+    g2.strokeStyle=INK; g2.lineWidth=major?Math.max(2,W*.011):Math.max(1,W*.005);
+    g2.beginPath(); g2.moveTo(cx+Math.cos(a)*r1, cy+Math.sin(a)*r1); g2.lineTo(cx+Math.cos(a)*(r1-len), cy+Math.sin(a)*(r1-len)); g2.stroke();
+    if(major && (k/2)%step===0){
+      g2.font=`800 ${Math.round(W*.075)}px ${disp}`; g2.fillStyle= red?RED:INK;
+      const lr=R-W*.075; g2.fillText(String(k/2), cx+Math.cos(a)*lr, cy+Math.sin(a)*lr);
+    }
+  }
+  g2.font=`600 ${Math.round(W*.03)}px ${body}`; g2.fillStyle=INK; g2.fillText('\u00d71000 r/min', cx, cy-W*.1);
+  // gear in a black window, speed below the hub
+  const gear = !S.running ? 'P' : (S.speed<1 && !S.gas ? 'N' : String(S.gear+1));
+  const gw=W*.1, gh=W*.085; g2.fillStyle=INK; g2.beginPath(); g2.roundRect?g2.roundRect(cx-gw/2,cy-W*.235,gw,gh,W*.015):g2.rect(cx-gw/2,cy-W*.235,gw,gh); g2.fill();
+  g2.font=`800 ${Math.round(W*.07)}px ${disp}`; g2.fillStyle= S.running?'#ffd21f':'#777'; g2.fillText(gear, cx, cy-W*.192);
+  const sp = unit==='kmh'? S.speed : S.speed*.621371;
+  g2.fillStyle=INK; g2.font=`800 ${Math.round(W*.13)}px ${disp}`; g2.fillText(String(Math.round(sp)), cx, cy+W*.17);
+  g2.font=`700 ${Math.round(W*.034)}px ${body}`; g2.fillText(unit==='kmh'?'km/h':'mph', cx, cy+W*.255);
+  g2.font=`600 ${Math.round(W*.028)}px ${body}`; g2.fillStyle='#3a3200'; g2.fillText(Math.round(S.rpm).toLocaleString()+' rpm', cx, cy+W*.31);
+  // red needle and black hub
+  const na=ang(S.rpm), tip=R+W*.02, tail=W*.06;
+  g2.save(); g2.shadowColor='rgba(0,0,0,.35)'; g2.shadowBlur=W*.012; g2.shadowOffsetY=W*.004;
+  g2.strokeStyle=RED; g2.lineCap='round'; g2.lineWidth=Math.max(3,W*.014);
+  g2.beginPath(); g2.moveTo(cx-Math.cos(na)*tail, cy-Math.sin(na)*tail); g2.lineTo(cx+Math.cos(na)*tip, cy+Math.sin(na)*tip); g2.stroke(); g2.restore();
+  g2.beginPath(); g2.arc(cx,cy,W*.045,0,Math.PI*2); g2.fillStyle='#1a1a1a'; g2.fill();
+  g2.beginPath(); g2.arc(cx,cy,W*.016,0,Math.PI*2); g2.fillStyle=RED; g2.fill();
+}
+
+// ---------- Loop ----------
+let last=performance.now();
+setInterval(()=>{ const now=performance.now(); const dt=Math.min(.1,(now-last)/1000); last=now; tick(dt,now); }, 16);
+const tfill=$('tfill');
+(function frame(){ draw(); tfill.style.width=(S.running?Math.round((S.loadOut||0)*100):0)+'%'; requestAnimationFrame(frame); })();
+
+// ---------- Boot ----------
+renderGarage(); selectCar(car); loadSaved().then(loadBuiltin);
+$('unitBtn').textContent = unit==='kmh'?'km/h':'mph';
+setSource('gps');
+if(document.fonts && document.fonts.ready) document.fonts.ready.then(draw);
+})();
+</script>
+</body></html>

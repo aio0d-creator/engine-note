@@ -165,7 +165,7 @@ const CARS = [
  {id:'stang',  name:'Ford Mustang GT',         eng:'5.0 V8 crossplane',             color:'#1b1d22', n:8,  pat:'cross', redline:7500, idle:700,  top:250, gears:6, acc:22, res:[[95,2.5,1],[250,3,.8],[650,4,.4]],  decay:3.8, noise:.25, sub:.7,  drive:3.2, lp:850,  pops:.7, stripe:'#f2f2f2'},
  {id:'rx7',    name:'Mazda RX-7',              eng:'1.3 twin rotary · turbo',       color:'#19a7b8', n:4,  pat:'even',  redline:8000, idle:1000, top:260, gears:5, acc:21, res:[[260,2.5,1],[800,3,.8],[2200,4,.6]], decay:4.5, noise:.35, sub:.15, drive:3.5, lp:2200, pops:1,  turbo:.7},
 ];
-CARS.forEach(c=>{ c.top=160; }); // top speed 160 km/h in test drive and GPS drive; gears spread over 0-160
+CARS.forEach(c=>{ c.top=140; c.gears=9; }); // every car: 9 gears, evenly spread up to 140 km/h
 const PAT = {
   cross:[1,.62,1,1,.62,1,.62,.62], flat:[1,.8], boxer:[1,.85,.95,.8,1,.86],
   five:[1,.55,.9,.5,.8], v10:[1,.88,.97,.84,1,.9,.95,.86,1,.9]
@@ -175,7 +175,7 @@ function engineCfg(c){
   for(let i=0;i<c.n;i++){ angles.push(i*720/c.n); amps.push(p ? p[i%p.length] : .94+.06*Math.random()); }
   return {angles, amps, decay:c.decay, noise:c.noise, res:c.res, sub:c.sub, jitter:c.jitter!=null?c.jitter:(c.pat==='cross'?.12:.05)};
 }
-function gearTops(c){ const g=[]; for(let i=0;i<c.gears;i++) g.push(c.top*(.4+.6*Math.pow(i/(c.gears-1),.6))); return g; } // longer, evenly balanced gears
+function gearTops(c){ return [15,30,45,60,80,95,110,125,140].map(v=>v*c.top/140); } // gear tops in km/h: 15/30/45/60/80/95/110/125/140
 
 // ---------- Audio worklet: firing pulses through exhaust resonators ----------
 const WORKLET = `
@@ -455,12 +455,12 @@ function tick(dt, now){
     S.speed = clamp(S.speed + a*dt, 0, car.top);
     if(!S.auto) S.speed=Math.min(S.speed, curTops()[S.gear]); // manual: the car can't go faster than redline in this gear
   } else {
-    const since = Math.min((now-G.t)/1000, 1.2);
+    const since = Math.min((now-G.t)/1000, 1.5) + .4; // look ~0.4 s ahead to cover the phone's GPS delay
     const pred = G.ok ? Math.max(0, G.speed + G.accel*since) : 0;
-    S.speed += (pred - S.speed)*Math.min(1, dt*4);
+    S.speed += (pred - S.speed)*Math.min(1, dt*10);
     if(S.speed<1.5 && pred<1.5) S.speed=Math.max(0,S.speed-dt*4);
     if(S.speed<2 && S.rev) S.loadT=1;
-    else if(G.accel>1.5) S.loadT=clamp(.3+G.accel/14,0,1);
+    else if(G.accel>.8) S.loadT=clamp(.35+G.accel/10,0,1);
     else if(G.accel<-2) S.loadT=0;
     else S.loadT=S.speed>5?.22:.05;
   }
@@ -579,7 +579,7 @@ function startGps(){
       let ms = (c.speed!=null && !isNaN(c.speed)) ? c.speed : null;
       if(ms==null && G.lastPos){ const dt=(ts-G.lastT)/1000; if(dt>0) ms=hav(G.lastPos,c)/dt; }
       const kmh = Math.max(0,(ms||0)*3.6);
-      if(G.lastKmh!=null){ const dt=(ts-G.lastT)/1000; if(dt>0.2){ const a=clamp((kmh-G.lastKmh)/dt,-40,40); G.accel=G.accel*.4+a*.6; } }
+      if(G.lastKmh!=null){ const dt=(ts-G.lastT)/1000; if(dt>0.1){ const a=clamp((kmh-G.lastKmh)/dt,-40,40); G.accel=G.accel*.2+a*.8; } }
       G.lastKmh=kmh; G.lastT=ts; G.lastPos={latitude:c.latitude,longitude:c.longitude};
       G.speed=kmh; G.t=performance.now(); G.ok=true; G.acc=c.accuracy;
       if(source==='gps') setStatus('GPS locked · ±'+Math.round(c.accuracy)+' m','ok');
